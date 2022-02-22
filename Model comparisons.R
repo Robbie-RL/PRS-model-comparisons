@@ -7,6 +7,7 @@
 # 2. Stacked clumping and thresholding
 # 3. Best clumping and thresholding combination (No stacking)
 # 4. Lassosum
+# 5. Bayesian linear regression model 
 
 
 library(bigsnpr)
@@ -17,6 +18,7 @@ library(magrittr)
 library(lassosum)
 library(methods)
 library(parallel)
+library(rstanarm)
 
 
 
@@ -455,8 +457,8 @@ out <- lassosum.pipeline(
   A2 = ss$A2,
   ref.bfile=bfile,
   keep.ref=as.data.frame(covar.train[,c(1,2)]), #Train data ID
-  test.bfile=bfile,
-  keep.test=as.data.frame(covar.train[,c(1,2)]), #Train data ID
+  #test.bfile=bfile,
+  #keep.test=as.data.frame(covar.train[,c(1,2)]), #Train data ID
   LDblocks = ld.file, 
   cluster=cl
 )
@@ -486,13 +488,45 @@ R2.Lasso <- v.test$validation.table$value^2
 
 
 
+################################
+## Bayesian linear regression ##
+################################
+
+
+## Use PC & Sex covariates and PRS from Section 1 but use Bayesian
+## Linear regression instead
+
+# Training data
+blm.train <- train.data.0.4
+# Testing data
+blm.test <- merge(test.data.0.4, pheno, by=c("FID", "IID"))
+
+
+
+
+## Bayesian linear regression model
+b.lm <- stan_glm(Height ~., data=blm.train[,-c(1,2)])
+print(describe_posterior(b.lm))
+
+
+
+
+## Predict on testing data and evaluate
+blm.pred <- predict(b.lm, newdata=blm.test[,-c(1,2,11)])
+SSR.BLM <- sum(((blm.test$Height - blm.pred)^2))
+R2.BLM <- 1 - (SSR.BLM / SST)
+
+
+
+
 ############################
 ## Final table of results ##
 ############################
 
 results <- data.frame("PRS Model"=c("Standard PRS","Stacked C+T", 
-                                    "Max C+T","Lassosum"),
-                      "R2" = c(R2.PRS, R2.SCT, R2.maxCT, R2.Lasso))
+                                    "Max C+T","Lassosum", 
+                                    "Bayesian linear model"),
+                      "R2" = c(R2.PRS, R2.SCT, R2.maxCT, R2.Lasso, R2.BLM))
 print(results)
 
 
